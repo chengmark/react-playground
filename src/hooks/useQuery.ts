@@ -64,12 +64,14 @@ const useQuery = <T>({
     data: null,
   });
 
+  const updateState = (newStates: Partial<QueryState<T>>) => setState(prevState => ({...prevState, ...newStates}));
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const execute = async () => {
     if (enabled !== null && !enabled) return;
 
-    setState({
+    updateState({
       status: 'loading',
       isIdle: false,
       isLoading: true,
@@ -97,7 +99,7 @@ const useQuery = <T>({
       const isError = await isErrorFn(response);
       if (isError) {
         const error = await getErrorFn(response);
-        return setState({
+        return updateState({
           status: 'error',
           isIdle: false,
           isLoading: false,
@@ -109,7 +111,7 @@ const useQuery = <T>({
       }
 
       const data = await getDataFn(response);
-      setState({
+      updateState({
         status: 'success',
         isIdle: false,
         isLoading: false,
@@ -121,7 +123,7 @@ const useQuery = <T>({
     } catch (err) {
       if (abortControllerRef.current !== abortController) return 
       const error = ensureError(err)
-      setState({
+      updateState({
         status: 'error',
         isIdle: false,
         isLoading: false,

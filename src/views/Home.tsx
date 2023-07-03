@@ -16,18 +16,18 @@ const Home = () => {
     // getErrorFn: async (response) => (await response.clone().json()).code
   })
 
-  const accountDetailQuery = useQuery<ResponseAccountDetail>({
+  const accountDetailQuery = useMutation<ResponseAccountDetail>({
     url: '/v1/accountDetail',
     method: 'POST',
     body: JSON.stringify({selectedAccount}),
-    enabled: !!selectedAccount,
+    // enabled: !!selectedAccount,
   })
 
   useEffect(() => {
     console.log(allAccountsQuery.data, !isAllAccountsErrorResponse(allAccountsQuery.data!))
     if(allAccountsQuery.data){
       setSelectedAccount(!isAllAccountsErrorResponse(allAccountsQuery.data) ? allAccountsQuery.data?.accounts[0].accountId : '')
-      // accountDetailQuery.execute()
+      accountDetailQuery.execute()
     }
   }, [allAccountsQuery.data])
 

@@ -64,10 +64,12 @@ const useMutation = <T>({
     execute: () => Promise.resolve(),
   });
 
+  const updateState = (newStates: Partial<MutationState<T>>) => setState(prevState => ({...prevState, ...newStates}));
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   async function execute () {
-    setState({
+    updateState({
       status: 'loading',
       isIdle: false,
       isLoading: true,
@@ -96,7 +98,7 @@ const useMutation = <T>({
       const isError = await isErrorFn(response);
       if (isError) {
         const error = await getErrorFn(response);
-        return setState({
+        return updateState({
           status: 'error',
           isIdle: false,
           isLoading: false,
@@ -109,7 +111,7 @@ const useMutation = <T>({
       }
 
       const data = await getDataFn(response);
-      setState({
+      updateState({
         status: 'success',
         isIdle: false,
         isLoading: false,
@@ -122,7 +124,7 @@ const useMutation = <T>({
     } catch (err) {
       if (abortControllerRef.current !== abortController) return 
       const error = ensureError(err)
-      setState({
+      updateState({
         status: 'error',
         isIdle: false,
         isLoading: false,
