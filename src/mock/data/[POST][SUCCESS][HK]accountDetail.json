@@ -1,0 +1,7 @@
+{
+  "status": "SUCCESS",
+  "details": {
+    "balance": 100,
+    "accountType": "TEST"
+  }
+}
