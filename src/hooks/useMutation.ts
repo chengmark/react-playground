@@ -1,46 +1,60 @@
 import { useState, useRef } from 'react';
 
 export type ApiResponse<T> = Response & {
-  json(): Promise<T>
-}
+  json(): Promise<T>;
+};
 
-type IsErrorFn<T> = (response: ApiResponse<T>) => Promise<boolean>;
-type GetErrorFn<T> = (response: ApiResponse<T>) => Promise<string>;
-type GetDataFn<T> = (response: ApiResponse<T>) => Promise<T>;
-
-interface MutationConfig<T> {
-  url: string
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  headers?: Record<string, string>;
-  body?: BodyInit,
-  isErrorFn?: IsErrorFn<T>; // if exists, then override default error indicating function 
-  getErrorFn?: GetErrorFn<T>; // if exists then override default "get error message" function
-  getDataFn?: GetDataFn<T>; // if exists then override default "get data" function
-  otherOptions?: Record<string, string>; // other fetch options
-}
-
-interface MutationState<T> {
-  status: 'idle' | 'loading' | 'success' | 'error'
+interface DerivedState {
   isIdle: boolean;
   isLoading: boolean;
   isSuccess: boolean;
   isError: boolean;
-  error: string | null;
+}
+
+interface NativeState<T> {
+  status: 'idle' | 'loading' | 'success' | 'error';
+  error: Error | null;
   data: T | null;
   execute: () => Promise<void>;
 }
 
-const ensureError = (value: unknown): Error => {
-  if (value instanceof Error) return value
+type MutationState<T> = NativeState<T> & DerivedState;
 
-  let stringified = '[Unable to stringify the error value]'
-  try {
-    stringified = JSON.stringify(value)
-  } catch {}
+type IsErrorFn<T> = (response: ApiResponse<T>) => Promise<boolean>;
+type GetErrorFn<T> = (response: ApiResponse<T>) => Promise<Error>;
+type GetDataFn<T> = (response: ApiResponse<T>) => Promise<T>;
+type OnSuccess<T> = (state: MutationState<T>) => Promise<void> | void;
+type OnError<T> = (state: MutationState<T>) => Promise<void> | void;
+type OnSettled<T> = (state: MutationState<T>) => Promise<void> | void;
+type StateCallback<T> = OnSuccess<T> | OnError<T> | OnSettled<T>;
 
-  const error = new Error(stringified)
-  return error
+export interface MutationConfig<T> {
+  url: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: BodyInit;
+  isErrorFn?: IsErrorFn<T>; // if exists, then override default error indicating function
+  getErrorFn?: GetErrorFn<T>; // if exists then override default "get error message" function
+  getDataFn?: GetDataFn<T>; // if exists then override default "get data" function
+  onSuccess?: OnSuccess<T>;
+  onError?: OnError<T>;
+  onSettled?: OnSettled<T>;
+  otherOptions?: Record<string, string>; // other fetch options
 }
+
+const ensureError = (value: unknown): Error => {
+  if (value instanceof Error) return value;
+
+  let stringified = '[Unable to stringify the error value]';
+  try {
+    stringified = JSON.stringify(value);
+  } catch {
+    /* empty */
+  }
+
+  const error = new Error(stringified);
+  return error;
+};
 
 const useMutation = <T>({
   url,
@@ -48,39 +62,49 @@ const useMutation = <T>({
   headers = {},
   body = JSON.stringify({}),
   isErrorFn = async (response: ApiResponse<T>) => response.status >= 400,
-  getErrorFn = async (response: ApiResponse<T>) => response.statusText,
-  getDataFn = async (response: ApiResponse<T>) => await response.json(),
+  getErrorFn = async (response: ApiResponse<T>) => new Error(response.statusText),
+  getDataFn = async (response: ApiResponse<T>) => response.json(),
+  onSuccess = () => {},
+  onError = () => {},
+  onSettled = () => {},
   otherOptions = {},
-}:MutationConfig<T>):MutationState<T> => {
-
-  const [state, setState] = useState<MutationState<T>>({
+}: MutationConfig<T>): MutationState<T> => {
+  const [state, setState] = useState<NativeState<T>>({
     status: 'idle',
-    isIdle: true,
-    isLoading: false,
-    isSuccess: false,
-    isError: false,
     error: null,
     data: null,
     execute: () => Promise.resolve(),
   });
 
-  const updateState = (newStates: Partial<MutationState<T>>) => setState(prevState => ({...prevState, ...newStates}));
+  const deriveState = (nativeState: NativeState<T>): MutationState<T> => ({
+    ...nativeState,
+    isIdle: nativeState.status === 'idle',
+    isLoading: nativeState.status === 'loading',
+    isSuccess: nativeState.status === 'success',
+    isError: nativeState.status === 'error',
+  });
+
+  const updateState = (updates: Partial<NativeState<T>> | null, callback?: StateCallback<T>) => {
+    setState((prevState) => {
+      let newState = { ...prevState };
+      if (updates) {
+        newState = {
+          ...newState,
+          error: null,
+          data: null,
+          ...updates,
+        };
+      }
+      callback?.(deriveState(newState));
+      return { ...newState };
+    });
+  };
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  async function execute () {
-    updateState({
-      status: 'loading',
-      isIdle: false,
-      isLoading: true,
-      isSuccess: false,
-      isError: false,
-      error: null,
-      data: null,
-      execute: () => Promise.resolve(),
-    });
-
-    // abort prev fetch 
+  async function execute() {
+    updateState({ status: 'loading' });
+    // abort prev fetch
     if (abortControllerRef.current) abortControllerRef.current.abort();
 
     const abortController = new AbortController();
@@ -98,48 +122,41 @@ const useMutation = <T>({
       const isError = await isErrorFn(response);
       if (isError) {
         const error = await getErrorFn(response);
-        return updateState({
-          status: 'error',
-          isIdle: false,
-          isLoading: false,
-          isSuccess: false,
-          isError: true,
-          error,
-          data: null,
-          execute,
-        });
+        updateState(
+          {
+            status: 'error',
+            error,
+          },
+          onError,
+        );
       }
 
       const data = await getDataFn(response);
-      updateState({
-        status: 'success',
-        isIdle: false,
-        isLoading: false,
-        isSuccess: true,
-        isError: false,
-        error: null,
-        data,
-        execute,
-      });
+      updateState(
+        {
+          status: 'success',
+          data,
+        },
+        onSuccess,
+      );
     } catch (err) {
-      if (abortControllerRef.current !== abortController) return 
-      const error = ensureError(err)
-      updateState({
-        status: 'error',
-        isIdle: false,
-        isLoading: false,
-        isSuccess: false,
-        isError: true,
-        error: error.message,
-        data: null,
-        execute,
-      });
+      if (abortControllerRef.current !== abortController) return;
+      const error = ensureError(err);
+      updateState(
+        {
+          status: 'error',
+          error,
+        },
+        onError,
+      );
     }
-  };
+    updateState(null, onSettled);
+  }
 
   return {
-    ...state,
-    execute
+    ...deriveState(state),
+    execute,
   };
 };
+
 export default useMutation;

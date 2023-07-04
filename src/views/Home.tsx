@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react"
 import { ResponseAllAccounts, isAllAccountsErrorResponse } from "../types/apiAllAccounts"
 import { ResponseAccountDetail } from "../types/apiAccountDetails"
-import useFetch from "../hooks/useFetch"
-import useQuery from "../hooks/useQuery"
-import useMutation from "../hooks/useMutation"
+import { useMutation, useQuery } from "../hooks"
 
 const Home = () => {
   const [text, setText] = useState('')
@@ -20,6 +18,12 @@ const Home = () => {
     url: '/v1/accountDetail',
     method: 'POST',
     body: JSON.stringify({selectedAccount}),
+    onSuccess: (state) => {
+      console.log('onSuccess', state);
+    },
+    onSettled: (state) => {
+      console.log('onSettled', state);
+    }
     // enabled: !!selectedAccount,
   })
 
@@ -41,7 +45,7 @@ const Home = () => {
         allAccountsQuery.status && <div>{allAccountsQuery.status}</div>
       }
       {
-        allAccountsQuery.error && <div>{allAccountsQuery.error}</div>
+        allAccountsQuery.error && <div>{allAccountsQuery.error.message}</div>
       }
       {
         allAccountsQuery.data && <div>{JSON.stringify(allAccountsQuery.data)}</div>
@@ -54,7 +58,7 @@ const Home = () => {
         accountDetailQuery.status && <div>{accountDetailQuery.status}</div>
       }
       {
-        accountDetailQuery.error && <div>{accountDetailQuery.error}</div>
+        accountDetailQuery.error && <div>{accountDetailQuery.error.message}</div>
       }
       {
         accountDetailQuery.data && <div>{JSON.stringify(accountDetailQuery.data)}</div>
