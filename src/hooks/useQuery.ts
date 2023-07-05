@@ -113,10 +113,10 @@ const useQuery = <T>({
       if (isError) {
         const error = await getErrorFn(response);
         updateState({ status: 'error', error });
+      } else {
+        const data = await getDataFn(response);
+        updateState({ status: 'success', data });
       }
-
-      const data = await getDataFn(response);
-      updateState({ status: 'success', data });
     } catch (err) {
       if (abortControllerRef.current !== abortController) return;
       const error = ensureError(err);

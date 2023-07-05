@@ -1,70 +1,61 @@
-import { useEffect, useState } from "react"
-import { ResponseAllAccounts, isAllAccountsErrorResponse } from "../types/apiAllAccounts"
-import { ResponseAccountDetail } from "../types/apiAccountDetails"
-import { useMutation, useQuery } from "../hooks"
+import { useEffect, useState } from 'react';
+import { ResponseAllAccounts, isAllAccountsErrorResponse } from '../types/apiAllAccounts';
+import { ResponseAccountDetail } from '../types/apiAccountDetails';
+import { useMutation, useQuery } from '../hooks';
+import { ResponseLogin } from '../types/apiLogin';
 
-const Home = () => {
-  const [text, setText] = useState('')
-  const [selectedAccount, setSelectedAccount] = useState<string | undefined>('')
-  const allAccountsQuery = useQuery<ResponseAllAccounts>({
-    url: '/v1/allAccounts',
-    method: 'GET',
-    enabled: !!text,
-    // isErrorFn: async (response) => (await response.clone().json()).status === 'FAILED',
-    // getErrorFn: async (response) => (await response.clone().json()).code
-  })
+function Home() {
+  const setAccessToken = (token: string) => sessionStorage.setItem('x-acc-op', token);
+  const setRefreshToken = (token: string) => sessionStorage.setItem('x-ref-op', token);
+  const getAccessToken = () => sessionStorage.getItem('x-acc-op');
+  const getRefreshToken = () => sessionStorage.getItem('x-ref-op');
 
-  const accountDetailQuery = useMutation<ResponseAccountDetail>({
-    url: '/v1/accountDetail',
+  const login = useMutation<ResponseLogin>({
+    url: '/v1/login',
     method: 'POST',
-    body: JSON.stringify({selectedAccount}),
-    onSuccess: (state) => {
-      console.log('onSuccess', state);
+    body: JSON.stringify({ userId: 'uid', password: 'pwd' }),
+    onSuccess: (state, response) => {
+      // console.log('login success', state, response);
+      setAccessToken(response.headers.get('x-acc-op') || '');
+      setRefreshToken(response.headers.get('x-ref-op') || '');
     },
-    onSettled: (state) => {
-      console.log('onSettled', state);
-    }
-    // enabled: !!selectedAccount,
-  })
+  });
 
-  useEffect(() => {
-    console.log(allAccountsQuery.data, !isAllAccountsErrorResponse(allAccountsQuery.data!))
-    if(allAccountsQuery.data){
-      setSelectedAccount(!isAllAccountsErrorResponse(allAccountsQuery.data) ? allAccountsQuery.data?.accounts[0].accountId : '')
-      accountDetailQuery.execute()
-    }
-  }, [allAccountsQuery.data])
-
-  useEffect(() => {
-    console.log(selectedAccount)
-  }, [selectedAccount])
+  const refresh = useMutation({
+    url: '/v1/token',
+    method: 'POST',
+    headers: {
+      'x-acc-op': getAccessToken() || '',
+      'x-ref-op': getRefreshToken() || '',
+    },
+    onSuccess: (state, response) => {
+      console.log('refresh success');
+      setAccessToken(response.headers.get('x-acc-op') || '');
+      setRefreshToken(response.headers.get('x-ref-op') || '');
+    },
+    onError: () => {
+      console.log('refresh error');
+      sessionStorage.clear();
+    },
+  });
 
   return (
     <div>
-      {
-        allAccountsQuery.status && <div>{allAccountsQuery.status}</div>
-      }
-      {
-        allAccountsQuery.error && <div>{allAccountsQuery.error.message}</div>
-      }
-      {
-        allAccountsQuery.data && <div>{JSON.stringify(allAccountsQuery.data)}</div>
-      }
-      {
-        !allAccountsQuery.isLoading && <input type="text" value={text} onChange={e => setText(e.target.value)}/>
-      }
-      <br></br>
-      {
-        accountDetailQuery.status && <div>{accountDetailQuery.status}</div>
-      }
-      {
-        accountDetailQuery.error && <div>{accountDetailQuery.error.message}</div>
-      }
-      {
-        accountDetailQuery.data && <div>{JSON.stringify(accountDetailQuery.data)}</div>
-      }
+      <button disabled={login.isLoading} onClick={() => login.execute()}>
+        LOGIN
+      </button>
+      <div>{login.status}</div>
+      <div>{JSON.stringify(login?.data)}</div>
+      <div>{login?.error?.toString()}</div>
+
+      <button disabled={refresh.isLoading} onClick={() => refresh.execute()}>
+        REFRESH
+      </button>
+      <div>{refresh.status}</div>
+      <div>{JSON.stringify(refresh?.data)}</div>
+      <div>{refresh?.error?.toString()}</div>
     </div>
-  )
+  );
 }
 
-export default Home
+export default Home;

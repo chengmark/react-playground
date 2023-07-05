@@ -23,10 +23,10 @@ type MutationState<T> = NativeState<T> & DerivedState;
 type IsErrorFn<T> = (response: ApiResponse<T>) => Promise<boolean>;
 type GetErrorFn<T> = (response: ApiResponse<T>) => Promise<Error>;
 type GetDataFn<T> = (response: ApiResponse<T>) => Promise<T>;
-type OnSuccess<T> = (state: MutationState<T>) => Promise<void> | void;
-type OnError<T> = (state: MutationState<T>) => Promise<void> | void;
+type OnSuccess<T> = (state: MutationState<T>, response: ApiResponse<T>) => Promise<void> | void;
+type OnError<T> = (state: MutationState<T>, error: Error) => Promise<void> | void;
 type OnSettled<T> = (state: MutationState<T>) => Promise<void> | void;
-type StateCallback<T> = OnSuccess<T> | OnError<T> | OnSettled<T>;
+type StateCallback<T> = (state: MutationState<T>) => Promise<void> | void;
 
 export interface MutationConfig<T> {
   url: string;
@@ -127,18 +127,18 @@ const useMutation = <T>({
             status: 'error',
             error,
           },
-          onError,
+          (newState: MutationState<T>) => onError(newState, error),
+        );
+      } else {
+        const data = await getDataFn(response);
+        updateState(
+          {
+            status: 'success',
+            data,
+          },
+          (newState: MutationState<T>) => onSuccess(newState, response),
         );
       }
-
-      const data = await getDataFn(response);
-      updateState(
-        {
-          status: 'success',
-          data,
-        },
-        onSuccess,
-      );
     } catch (err) {
       if (abortControllerRef.current !== abortController) return;
       const error = ensureError(err);
@@ -147,7 +147,7 @@ const useMutation = <T>({
           status: 'error',
           error,
         },
-        onError,
+        (newState: MutationState<T>) => onError(newState, error),
       );
     }
     updateState(null, onSettled);
